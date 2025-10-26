@@ -1,0 +1,31 @@
+name: Publish Binaries Manual
+
+on:
+  workflow_run:
+    workflows: ["Build Apple XCFramework", "Build Linux ArtifactBundle"]
+    types: [completed]
+
+jobs:
+  release:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: PlaidAPI-Apple, path: PlaidAPI.xcframework.zip }
+      - uses: actions/download-artifact@v4
+        with: { name: PlaidAPI-Linux, path: PlaidAPI.artifactbundle.zip }
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            PlaidAPI.xcframework.zip
+            PlaidAPI.artifactbundle.zip
+          body: |
+            Prebuilt binaries for PlaidAPI ${{ github.ref_name }}
+
+            These can be used in SwiftPM:
+
+            $(cat apple-snippet.txt)
+            $(cat linux-snippet.txt)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
