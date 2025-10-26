@@ -16,10 +16,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: swift-actions/setup-swift@v2
-        with:
-          swift-version: '6.1'
-
       - name: Build for ${{ matrix.triple }}
         run: swift build -c release --triple ${{ matrix.triple }}
 
@@ -38,10 +34,6 @@ jobs:
         with:
           name: x86_64-unknown-linux-gnu
           path: linux-x86_64
-      
-      - uses: swift-actions/setup-swift@v2
-        with:
-          swift-version: '6.1'
 
       - name: Create Artifact Bundle structure
         run: |
