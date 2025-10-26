@@ -1,0 +1,92 @@
+name: Build Linux ArtifactBundle
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        triple: [x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu]
+    container:
+      image: swift:6.1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build for ${{ matrix.triple }}
+        run: swift build -c release --triple ${{ matrix.triple }}
+
+      - name: Upload built lib
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.triple }}
+          path: .build/${{ matrix.triple }}/release/libPlaidAPI.a
+
+  package:
+    needs: build-linux
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: x86_64-unknown-linux-gnu
+          path: linux-x86_64
+      - uses: actions/download-artifact@v4
+        with:
+          name: aarch64-unknown-linux-gnu
+          path: linux-aarch64
+
+      - name: Create Artifact Bundle structure
+        run: |
+          mkdir -p PlaidAPI.artifactbundle/linux-x86_64
+          mkdir -p PlaidAPI.artifactbundle/linux-aarch64
+          mv linux-x86_64/libPlaidAPI.a PlaidAPI.artifactbundle/linux-x86_64/
+          mv linux-aarch64/libPlaidAPI.a PlaidAPI.artifactbundle/linux-aarch64/
+          cat > PlaidAPI.artifactbundle/info.json <<'JSON'
+          {
+            "schemaVersion": "1.0",
+            "artifacts": {
+              "PlaidAPI": {
+                "type": "library",
+                "version": "1.0.0",
+                "variants": [
+                  { "path": "linux-x86_64", "supportedTriples": ["x86_64-unknown-linux-gnu"] },
+                  { "path": "linux-aarch64", "supportedTriples": ["aarch64-unknown-linux-gnu"] }
+                ]
+              }
+            }
+          }
+          JSON
+
+      - name: Zip ArtifactBundle
+        run: zip -r PlaidAPI.artifactbundle.zip PlaidAPI.artifactbundle
+
+      - name: Compute checksum
+        id: checksum
+        run: echo "checksum=$(swift package compute-checksum PlaidAPI.artifactbundle.zip)" >> $GITHUB_OUTPUT
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PlaidAPI-Linux
+          path: PlaidAPI.artifactbundle.zip
+
+      - name: Generate release snippet
+        run: |
+          echo '### SwiftPM Binary Target (Linux)
+          ```swift
+          .binaryTarget(
+              name: "PlaidAPILinux",
+              url: "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/PlaidAPI.artifactbundle.zip",
+              checksum: "${{ steps.checksum.outputs.checksum }}"
+          )
+          ```' > linux-snippet.txt
+
+      - name: Upload snippet
+        uses: actions/upload-artifact@v4
+        with:
+          name: Linux-Snippet
+          path: linux-snippet.txt
