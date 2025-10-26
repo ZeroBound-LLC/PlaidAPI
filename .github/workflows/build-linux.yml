@@ -13,6 +13,7 @@ jobs:
         triple: [x86_64-unknown-linux-gnu]
     container:
       image: swift:6.1
+      options: --platform linux/amd64
     steps:
       - uses: actions/checkout@v4
 
