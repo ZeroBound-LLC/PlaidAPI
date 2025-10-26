@@ -12,7 +12,7 @@ jobs:
       matrix:
         triple: [x86_64-unknown-linux-gnu]
     container:
-      image: swift:6.1
+      image: swift:6.0
     steps:
       - uses: actions/checkout@v4
 
@@ -23,7 +23,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.triple }}
-          path: .build/${{ matrix.triple }}/release/libPlaidAPI.a
+          path: .build/${{ matrix.triple }}/release/libPlaidAPIo.a
 
   package:
     needs: build-linux
@@ -34,20 +34,18 @@ jobs:
         with:
           name: x86_64-unknown-linux-gnu
           path: linux-x86_64
-
-      - uses: swift-actions/setup-swift@v2
-        with:
-          swift-version: '6.1'
+      
 
       - name: Create Artifact Bundle structure
         run: |
-          mkdir -p PlaidAPI.artifactbundle/linux-x86_64
-          mv linux-x86_64/libPlaidAPI.a PlaidAPI.artifactbundle/linux-x86_64/
-          cat > PlaidAPI.artifactbundle/info.json <<'JSON'
+          mkdir -p PlaidAPIo.artifactbundle/linux-x86_64
+          mkdir -p PlaidAPIo.artifactbundle/linux-aarch64
+          mv linux-x86_64/libPlaidAPIo.a PlaidAPIo.artifactbundle/linux-x86_64/
+          cat > PlaidAPIo.artifactbundle/info.json <<'JSON'
           {
             "schemaVersion": "1.0",
             "artifacts": {
-              "PlaidAPI": {
+              "PlaidAPIo": {
                 "type": "library",
                 "version": "1.0.0",
                 "variants": [
@@ -59,25 +57,25 @@ jobs:
           JSON
 
       - name: Zip ArtifactBundle
-        run: zip -r PlaidAPI.artifactbundle.zip PlaidAPI.artifactbundle
+        run: zip -r PlaidAPIo.artifactbundle.zip PlaidAPIo.artifactbundle
 
       - name: Compute checksum
         id: checksum
-        run: echo "checksum=$(swift package compute-checksum PlaidAPI.artifactbundle.zip)" >> $GITHUB_OUTPUT
+        run: echo "checksum=$(swift package compute-checksum PlaidAPIo.artifactbundle.zip)" >> $GITHUB_OUTPUT
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PlaidAPI-Linux
-          path: PlaidAPI.artifactbundle.zip
+          name: PlaidAPIo-Linux
+          path: PlaidAPIo.artifactbundle.zip
 
       - name: Generate release snippet
         run: |
           echo '### SwiftPM Binary Target (Linux)
           ```swift
           .binaryTarget(
-              name: "PlaidAPILinux",
-              url: "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/PlaidAPI.artifactbundle.zip",
+              name: "PlaidAPIoLinux",
+              url: "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/PlaidAPIo.artifactbundle.zip",
               checksum: "${{ steps.checksum.outputs.checksum }}"
           )
           ```' > linux-snippet.txt
