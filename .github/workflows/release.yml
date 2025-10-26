@@ -10,9 +10,9 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/download-artifact@v4
-        with: { name: PlaidAPI-Apple, path: . }
+        with: { name: PlaidAPI-Apple, path: PlaidAPI.xcframework.zip }
       - uses: actions/download-artifact@v4
-        with: { name: PlaidAPI-Linux, path: . }
+        with: { name: PlaidAPI-Linux, path: PlaidAPI.arifactbundle.zip }
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
