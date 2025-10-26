@@ -15,11 +15,6 @@ let package = Package(
         // Products define the executables and libraries a package produces, making them visible to other packages.
         .library(
             name: "PlaidAPI",
-            type: .dynamic,
-            targets: ["PlaidAPI"]
-        ),
-        .library(
-            name: "PlaidAPIStatic", 
             type: .static,
             targets: ["PlaidAPI"]
         ),
