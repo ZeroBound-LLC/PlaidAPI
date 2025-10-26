@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        triple: [x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu]
+        triple: [x86_64-unknown-linux-gnu]
     container:
       image: swift:6.1
     steps:
@@ -34,10 +34,6 @@ jobs:
         with:
           name: x86_64-unknown-linux-gnu
           path: linux-x86_64
-      - uses: actions/download-artifact@v4
-        with:
-          name: aarch64-unknown-linux-gnu
-          path: linux-aarch64
 
       - uses: swift-actions/setup-swift@v2
         with:
@@ -46,9 +42,7 @@ jobs:
       - name: Create Artifact Bundle structure
         run: |
           mkdir -p PlaidAPI.artifactbundle/linux-x86_64
-          mkdir -p PlaidAPI.artifactbundle/linux-aarch64
           mv linux-x86_64/libPlaidAPI.a PlaidAPI.artifactbundle/linux-x86_64/
-          mv linux-aarch64/libPlaidAPI.a PlaidAPI.artifactbundle/linux-aarch64/
           cat > PlaidAPI.artifactbundle/info.json <<'JSON'
           {
             "schemaVersion": "1.0",
@@ -58,7 +52,6 @@ jobs:
                 "version": "1.0.0",
                 "variants": [
                   { "path": "linux-x86_64", "supportedTriples": ["x86_64-unknown-linux-gnu"] },
-                  { "path": "linux-aarch64", "supportedTriples": ["aarch64-unknown-linux-gnu"] }
                 ]
               }
             }
