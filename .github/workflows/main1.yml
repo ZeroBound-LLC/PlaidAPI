@@ -23,11 +23,11 @@ jobs:
           # If your library has headers, copy them here
           # cp -R Sources/MyLib/include/* build/include/
           xcodebuild -create-xcframework \
-            -library out/macos/libMySwiftLib.a \
+            -library out/macos/libPlaidAPI.a \
             -headers build/include \
-            -output out/MySwiftLib.xcframework
+            -output out/PlaidAPI.xcframework
           cd out
-          zip -r ../MySwiftLib-macOS.xcframework.zip MySwiftLib.xcframework
+          zip -r ../PlaidAPI-macOS.xcframework.zip PlaidAPI.xcframework
 
       - uses: actions/upload-artifact@v4
         with:
@@ -46,7 +46,7 @@ jobs:
         run: |
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
-            -t my-swift-lib-builder \
+            -t PlaidAPI-builder \
             -f Dockerfile \
             --output type=local,dest=out .
           cd out && tar -czf ../PlaidAPI-Linux.tar.gz .
