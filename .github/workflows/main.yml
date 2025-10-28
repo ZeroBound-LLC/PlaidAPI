@@ -1,0 +1,231 @@
+name: Build Swift Static Library (XCFramework + Linux)
+
+on:
+  workflow_dispatch:
+    inputs:
+      lib_name:
+        description: "Library (product) name as built by Swift/Xcode"
+        default: "PlaidAPI"
+        required: true
+      xcode_scheme:
+        description: "Xcode scheme that builds the framework/static lib"
+        default: "PlaidAPI"
+        required: true
+      project_dir:
+        description: "Relative path to the project root (if not repo root)"
+        default: "."
+        required: true
+  push:
+    tags:
+      - "v*"
+
+env:
+  # Defaults; can be overridden by workflow_dispatch inputs
+  LIB_NAME: ${{ inputs.lib_name || 'PlaidAPI' }}
+  XCODE_SCHEME: ${{ inputs.xcode_scheme || 'PlaidAPI' }}
+  PROJECT_DIR: ${{ inputs.project_dir || '.' }}
+  XC_ARCHIVE_DIR: build/xc-archives
+  XC_OUTPUT_DIR: build/xc-output
+  LINUX_OUT_DIR: build/linux-output
+
+jobs:
+  macos-xcframework:
+    name: macOS XCFramework (arm64 + x86_64)
+    runs-on: macos-14  # Apple Silicon runner
+    defaults:
+      run:
+        working-directory: ${{ env.PROJECT_DIR }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        # Change if you need a specific version
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Resolve SPM
+        run: xcodebuild -resolvePackageDependencies -scheme "$XCODE_SCHEME"
+
+      # Build archives for both macOS architectures
+      - name: Archive (macOS arm64)
+        run: |
+          mkdir -p "$XC_ARCHIVE_DIR"
+          xcodebuild archive \
+            -scheme "$XCODE_SCHEME" \
+            -destination "generic/platform=macOS" \
+            -archivePath "$XC_ARCHIVE_DIR/${XCODE_SCHEME}-macos-arm64.xcarchive" \
+            SKIP_INSTALL=NO \
+            BUILD_LIBRARY_FOR_DISTRIBUTION=YES \
+            ONLY_ACTIVE_ARCH=NO \
+            ARCHS=arm64 \
+            ENABLE_BITCODE=NO
+
+      - name: Archive (macOS x86_64)
+        run: |
+          xcodebuild archive \
+            -scheme "$XCODE_SCHEME" \
+            -destination "generic/platform=macOS" \
+            -archivePath "$XC_ARCHIVE_DIR/${XCODE_SCHEME}-macos-x86_64.xcarchive" \
+            SKIP_INSTALL=NO \
+            BUILD_LIBRARY_FOR_DISTRIBUTION=YES \
+            ONLY_ACTIVE_ARCH=NO \
+            ARCHS=x86_64 \
+            ENABLE_BITCODE=NO
+
+      - name: Create XCFramework
+        run: |
+          mkdir -p "$XC_OUTPUT_DIR"
+          # Try framework first; if your scheme outputs a static library (.a) instead of a .framework,
+          # switch to the commented "static library" block below.
+
+          # --- Framework output (preferred) ---
+          xcodebuild -create-xcframework \
+            -framework "$XC_ARCHIVE_DIR/${XCODE_SCHEME}-macos-arm64.xcarchive/Products/Library/Frameworks/${XCODE_SCHEME}.framework" \
+            -framework "$XC_ARCHIVE_DIR/${XCODE_SCHEME}-macos-x86_64.xcarchive/Products/Library/Frameworks/${XCODE_SCHEME}.framework" \
+            -output "$XC_OUTPUT_DIR/${XCODE_SCHEME}.xcframework"
+
+          # --- Static library output (alternative) ---
+          # xcodebuild -create-xcframework \
+          #   -library "$XC_ARCHIVE_DIR/${XCODE_SCHEME}-macos-arm64.xcarchive/Products/usr/local/lib/lib${LIB_NAME}.a" \
+          #   -headers "$XC_ARCHIVE_DIR/${XCODE_SCHEME}-macos-arm64.xcarchive/Products/usr/local/include" \
+          #   -library "$XC_ARCHIVE_DIR/${XCODE_SCHEME}-macos-x86_64.xcarchive/Products/usr/local/lib/lib${LIB_NAME}.a" \
+          #   -headers "$XC_ARCHIVE_DIR/${XCODE_SCHEME}-macos-x86_64.xcarchive/Products/usr/local/include" \
+          #   -output "$XC_OUTPUT_DIR/${XCODE_SCHEME}.xcframework"
+
+      - name: Zip XCFramework
+        run: |
+          cd "$XC_OUTPUT_DIR"
+          ditto -c -k --sequesterRsrc --keepParent "${XCODE_SCHEME}.xcframework" "${XCODE_SCHEME}-macos.xcframework.zip"
+
+      - name: Upload XCFramework
+        uses: actions/upload-artifact@v4
+        with:
+          name: "${{ env.XCODE_SCHEME }}-macOS-xcframework"
+          path: |
+            ${{ env.PROJECT_DIR }}/${{ env.XC_OUTPUT_DIR }}/${{ env.XCODE_SCHEME }}-macos.xcframework.zip
+
+  linux-static-libs:
+    name: Linux Static Libraries (amd64 + arm64)
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: ${{ env.PROJECT_DIR }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            triple: x86_64-unknown-linux-gnu
+          - arch: arm64
+            platform: linux/arm64
+            triple: aarch64-unknown-linux-gnu
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Prepare output dir
+        run: mkdir -p "$LINUX_OUT_DIR/${{ matrix.triple }}"
+
+      # Build inside official Swift Docker images for the target platform
+      - name: Build static lib in Docker (${{ matrix.arch }})
+        run: |
+          # Choose your Swift version; 5.10 is widely available. Adjust as needed.
+          SWIFT_TAG="6.10-jammy"
+          CONTAINER_NAME="swift-build-${{ matrix.arch }}-$RANDOM"
+          SRC_ABS="$(pwd)"
+          OUT_ABS="$SRC_ABS/$LINUX_OUT_DIR/${{ matrix.triple }}"
+
+          docker run --rm --platform ${{ matrix.platform }} \
+            -v "$SRC_ABS":/src \
+            -w /src \
+            --name "$CONTAINER_NAME" \
+            swift:$SWIFT_TAG \
+            bash -c "
+              apt-get update >/dev/null 2>&1 || true
+              swift --version
+              # Build the static library product
+              swift build -c release --product \"$LIB_NAME\"
+              # Locate the built artifacts
+              LIB=\$(find .build -type f -path '*/release/lib${LIB_NAME}.a' | head -n1)
+              if [ -z \"\$LIB\" ]; then
+                echo 'lib${LIB_NAME}.a not found. Check product name or ensure static library target.' >&2
+                exit 1
+              fi
+              echo 'Found static lib: ' \$LIB
+
+              # Collect Swift module interfaces & headers if present
+              MODDIR=\$(dirname \"\$LIB\")/../**/*.swiftmodule
+              # Normalize output layout:
+              mkdir -p /out/lib /out/include /out/modules
+              cp \"\$LIB\" /out/lib/
+              # Copy Swift modules (binary .swiftmodule and .swiftdoc) if they exist
+              if compgen -G \".build/**/release/${LIB_NAME}.swiftmodule\" > /dev/null; then
+                cp -R .build/**/release/${LIB_NAME}.swiftmodule /out/modules/ 2>/dev/null || true
+              fi
+              # Copy Clang-style headers if your target exposes any C headers
+              if [ -d \".build/${{ matrix.triple }}/release/${LIB_NAME}.build\" ]; then
+                cp -R .build/${{ matrix.triple }}/release/${LIB_NAME}.build/include /out/include 2>/dev/null || true
+              fi
+            " \
+            && docker cp "$CONTAINER_NAME:/out" "$OUT_ABS" || true
+
+          # Post-process (when copying from a finished --rm container, fallback to volume copy)
+          if [ ! -d "$OUT_ABS/out" ]; then
+            # If docker cp failed due to --rm timing, build using a persistent container
+            docker create --platform ${{ matrix.platform }} --name "$CONTAINER_NAME" -v "$SRC_ABS":/src -w /src swift:$SWIFT_TAG bash >/dev/null
+            docker start "$CONTAINER_NAME" >/dev/null
+            docker exec "$CONTAINER_NAME" bash -lc "
+              swift build -c release --product \"$LIB_NAME\"
+              LIB=\$(find .build -type f -path '*/release/lib${LIB_NAME}.a' | head -n1)
+              mkdir -p /out/lib /out/include /out/modules
+              cp \"\$LIB\" /out/lib/
+              if compgen -G \".build/**/release/${LIB_NAME}.swiftmodule\" > /dev/null; then
+                cp -R .build/**/release/${LIB_NAME}.swiftmodule /out/modules/ 2>/dev/null || true
+              fi
+              if [ -d \".build/${{ matrix.triple }}/release/${LIB_NAME}.build\" ]; then
+                cp -R .build/${{ matrix.triple }}/release/${LIB_NAME}.build/include /out/include 2>/dev/null || true
+              fi
+            "
+            docker cp "$CONTAINER_NAME:/out" "$OUT_ABS"
+            docker rm -f "$CONTAINER_NAME" >/dev/null
+          fi
+
+          # Flatten /out folder level if present
+          if [ -d "$OUT_ABS/out" ]; then
+            rsync -a "$OUT_ABS/out/" "$OUT_ABS/"
+            rm -rf "$OUT_ABS/out"
+          fi
+
+      - name: Package linux bundle (${{ matrix.triple }})
+        run: |
+          cd "$LINUX_OUT_DIR/${{ matrix.triple }}"
+          tar -czf "../../${LIB_NAME}-${{ matrix.triple }}.tar.gz" .
+
+      - name: Upload linux artifact (${{ matrix.triple }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: "${{ env.LIB_NAME }}-${{ matrix.triple }}"
+          path: |
+            ${{ env.PROJECT_DIR }}/${{ env.LINUX_OUT_DIR }}/${{ env.LIB_NAME }}-${{ matrix.triple }}.tar.gz
+
+  summarize:
+    name: Summarize Artifacts
+    runs-on: ubuntu-22.04
+    needs: [macos-xcframework, linux-static-libs]
+    steps:
+      - name: Artifact summary
+        run: |
+          echo "XCFramework zip: <scheme>-macos.xcframework.zip"
+          echo "Linux bundles:"
+          echo " - ${LIB_NAME}-x86_64-unknown-linux-gnu.tar.gz"
+          echo " - ${LIB_NAME}-aarch64-unknown-linux-gnu.tar.gz"
