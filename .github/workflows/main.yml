@@ -31,7 +31,7 @@ env:
 jobs:
   macos-xcframework:
     name: macOS XCFramework (arm64 + x86_64)
-    runs-on: macos-14  # Apple Silicon runner
+    runs-on: macos-26  # Apple Silicon runner
     defaults:
       run:
         working-directory: ${{ env.PROJECT_DIR }}
@@ -140,7 +140,7 @@ jobs:
       - name: Build static lib in Docker (${{ matrix.arch }})
         run: |
           # Choose your Swift version; 5.10 is widely available. Adjust as needed.
-          SWIFT_TAG="6.10-jammy"
+          SWIFT_TAG="6.1-jammy"
           CONTAINER_NAME="swift-build-${{ matrix.arch }}-$RANDOM"
           SRC_ABS="$(pwd)"
           OUT_ABS="$SRC_ABS/$LINUX_OUT_DIR/${{ matrix.triple }}"
