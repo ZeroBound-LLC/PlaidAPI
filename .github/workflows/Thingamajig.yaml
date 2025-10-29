@@ -44,7 +44,7 @@ jobs:
 
       - name: Install Swift (manual)
         run: |
-          SWIFT_VERSION=6.1
+          SWIFT_VERSION=6.1.0
           if [[ "$RUNNER_OS" == "macOS" ]]; then
             brew install swift
           else
