@@ -1,13 +1,16 @@
-# syntax=docker/dockerfile:1.6
-FROM swift:6.1-jammy as builder
+# syntax=docker/dockerfile:1.4
+FROM swift:6.1 AS builder
 
-WORKDIR /build
+WORKDIR /workspace
 COPY . .
 
-# Build release with static Swift stdlib
-RUN swift build -c release --static-swift-stdlib
+# Build the static library
+RUN swift build -c release
 
-RUN mkdir -p /out && cp -R .build/release/*.a /out/
+# Extract all static libs (.a) to /out so Buildx can copy them back
+RUN mkdir -p /out && \
+    find .build -type f -name "*.a" -exec cp {} /out/ \;
 
-FROM ubuntu:22.04
-COPY --from=builder /out /out
+# Final export stage
+FROM scratch AS export
+COPY --from=builder /out/ /
