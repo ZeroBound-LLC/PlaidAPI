@@ -1,0 +1,125 @@
+name: Build & Release Swift Static Library + XCFramework
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Static Libraries
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-14
+            platform: macos
+            arch: arm64
+            triple: arm64-apple-macosx
+          - os: macos-14
+            platform: macos
+            arch: x86_64
+            triple: x86_64-apple-macosx
+          - os: macos-14
+            platform: ios
+            arch: arm64
+            triple: arm64-apple-ios
+          - os: macos-14
+            platform: ios-simulator
+            arch: x86_64
+            triple: x86_64-apple-ios-simulator
+          - os: ubuntu-latest
+            platform: linux
+            arch: amd64
+            triple: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            platform: linux
+            arch: aarch64
+            triple: aarch64-unknown-linux-gnu
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Swift (manual)
+        run: |
+          SWIFT_VERSION=6.1.3
+          wget https://download.swift.org/swift-${SWIFT_VERSION}-RELEASE/ubuntu2204/swift-${SWIFT_VERSION}-RELEASE-ubuntu22.04.tar.gz
+
+
+
+      - name: Build static library
+        run: |
+          swift build -c release --static-swift-stdlib --triple ${{ matrix.triple }}
+          mkdir -p build/${{ matrix.platform }}-${{ matrix.arch }}
+          cp -r .build/release/*.a build/${{ matrix.platform }}-${{ matrix.arch }}/ || true
+          cp -r .build/release/*.swiftmodule build/${{ matrix.platform }}-${{ matrix.arch }}/ || true
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}-${{ matrix.arch }}
+          path: build/${{ matrix.platform }}-${{ matrix.arch }}
+
+  release:
+    name: Create Release
+    runs-on: macos-14
+    needs: build
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release_builds
+
+      - name: Merge macOS arm64/x86_64 into universal binary
+        run: |
+          mkdir -p universal/macos
+          libname=$(basename $(ls release_builds/macos-arm64/*.a | head -n1))
+          lipo -create \
+            release_builds/macos-arm64/$libname \
+            release_builds/macos-x86_64/$libname \
+            -output universal/macos/$libname
+          cp -r release_builds/macos-arm64/*.swiftmodule universal/macos/ || true
+
+      - name: Merge iOS & simulator into fat libs
+        run: |
+          mkdir -p universal/ios
+          libname=$(basename $(ls release_builds/ios/*.a | head -n1))
+          lipo -create \
+            release_builds/ios-arm64/$libname \
+            release_builds/ios-simulator-x86_64/$libname \
+            -output universal/ios/$libname || true
+          cp -r release_builds/ios-arm64/*.swiftmodule universal/ios/ || true
+
+      - name: Create XCFramework
+        run: |
+          mkdir -p release_package
+          libname=$(basename $(ls universal/macos/*.a | head -n1))
+          frameworkName="${libname%.*}"
+          xcodebuild -create-xcframework \
+            -library universal/macos/$libname -headers universal/macos \
+            -library universal/ios/$libname -headers universal/ios \
+            -output release_package/${frameworkName}.xcframework
+
+      - name: Collect Linux builds
+        run: |
+          cp -r release_builds/linux-* release_package/ || true
+
+      - name: Create tarball
+        run: |
+          cd release_package
+          tar -czf ../static-binaries-${{ github.ref_name }}.tar.gz *
+          cd ..
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: static-binaries-${{ github.ref_name }}.tar.gz
+          name: Release ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
