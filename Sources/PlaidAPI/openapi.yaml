@@ -3760,35 +3760,6 @@ paths:
             schema:
               $ref: '#/components/schemas/StatementsListRequest'
         description: ""
-  /statements/download:
-    post:
-      tags:
-      - plaid
-      summary: Retrieve a single statement.
-      externalDocs:
-        url: /api/products/statements#statementsdownload
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StatementsDownloadResponse'
-        default:
-          description: Error response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PlaidError'
-      operationId: statementsDownload
-      description: The `/statements/download` endpoint retrieves a single statement PDF in binary format.  The response will contain a `Plaid-Content-Hash` header containing a SHA 256 checksum of the statement. This can be used to verify that the file being sent by Plaid is the same file that was downloaded to your system.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/StatementsDownloadRequest'
-        description: ""
   /statements/refresh:
     post:
       tags:
@@ -16361,45 +16332,6 @@ paths:
             schema:
               $ref: '#/components/schemas/TransferDiligenceDocumentUploadRequest'
             examples: {}
-      parameters: []
-  /transfer/originator/get:
-    post:
-      summary: Get status of an originator's onboarding
-      tags:
-      - plaid
-      externalDocs:
-        url: /api/products/transfer/platform-payments/#transferoriginatorget
-      operationId: transferOriginatorGet
-      responses:
-        "200":
-          description: OK
-          headers: {}
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TransferOriginatorGetResponse'
-              examples:
-                example-1:
-                  value:
-                    originator:
-                      client_id: 6a65dh3d1h0d1027121ak184
-                      transfer_diligence_status: approved
-                      company_name: Plaid
-                    request_id: saKrIBuEB9qJZno
-        default:
-          description: Error response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PlaidError'
-      description: The `/transfer/originator/get` endpoint gets status updates for an originator's onboarding process. This information is also available via the Transfer page on the Plaid dashboard.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TransferOriginatorGetRequest'
-          examples: {}
       parameters: []
   /transfer/originator/list:
     post:
